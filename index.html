@@ -7,13 +7,13 @@
 
 <!--
 =======================================================
-  SUPABASE KURULUM TALİMATLARI
+  SUPABASE ŞİFRE SİSTEMİ KURULUM TALİMATLARI
 =======================================================
 
-1. Supabase Dashboard → SQL Editor'a gir
-2. Aşağıdaki SQL'i kopyala ve "Run" ile çalıştır:
+Supabase SQL Editor'da şunu çalıştır:
 
-  create table messages (
+  -- Mesajlar tablosu (zaten varsa bu kısmı atla)
+  create table if not exists messages (
     id uuid default gen_random_uuid() primary key,
     text text not null,
     username text not null,
@@ -21,19 +21,27 @@
     created_at timestamp with time zone default timezone('utc', now())
   );
 
+  -- Şifre tablosu (YENİ)
+  create table config (
+    key text primary key,
+    value text not null
+  );
+
+  -- Şifreyi buraya yaz (örnek: "gizlisifre123")
+  insert into config (key, value) values ('chat_password', 'BURAYA_SİFRENİ_YAZ');
+
+  -- RLS politikaları
   alter table messages enable row level security;
+  alter table config enable row level security;
 
-  create policy "Herkes okuyabilir"
-    on messages for select using (true);
+  create policy "Herkes mesaj okuyabilir" on messages for select using (true);
+  create policy "Herkes mesaj yazabilir" on messages for insert with check (true);
+  create policy "Herkes mesaj güncelleyebilir" on messages for update using (true);
+  create policy "Herkes config okuyabilir" on config for select using (true);
 
-  create policy "Herkes yazabilir"
-    on messages for insert with check (true);
+Şifreyi değiştirmek istersen:
+  update config set value = 'YENİ_ŞİFRE' where key = 'chat_password';
 
-  create policy "Herkes güncelleyebilir"
-    on messages for update using (true);
-
-3. Sol menüden "Realtime" → "Tables" → messages tablosunu etkinleştir
-4. Dosyayı GitHub Pages'e yükle ve linki paylaş!
 =======================================================
 -->
 
@@ -54,6 +62,7 @@
     --input-bg: #f7f7f7;
     --accent: #0084ff;
     --seen-color: #0084ff;
+    --danger: #ef4444;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -75,50 +84,75 @@
     color: var(--text-in);
   }
 
-  #modal-overlay {
+  /* ── Ortak modal ── */
+  .modal-overlay {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.55);
+    background: rgba(0,0,0,0.6);
     display: flex; align-items: center; justify-content: center;
-    z-index: 100;
+    z-index: 200;
   }
 
-  #modal {
+  .modal-box {
     background: var(--surface);
-    border-radius: 18px;
+    border-radius: 20px;
     padding: 2rem 1.75rem;
-    width: min(360px, 90vw);
+    width: min(360px, 92vw);
     text-align: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.2);
   }
 
-  #modal h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: .4rem; }
-  #modal p  { font-size: .9rem; color: var(--muted); margin-bottom: 1.25rem; }
+  .modal-icon { font-size: 2.2rem; margin-bottom: .6rem; }
 
-  #modal input {
+  .modal-box h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: .35rem; }
+  .modal-box p  { font-size: .88rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.5; }
+
+  .modal-box input {
     width: 100%; padding: .65rem 1rem;
     border: 1.5px solid var(--border); border-radius: 10px;
     font-size: 1rem; background: var(--input-bg); color: var(--text-in);
-    outline: none; margin-bottom: 1rem; transition: border-color .15s;
+    outline: none; margin-bottom: .75rem; transition: border-color .15s;
   }
 
-  #modal input:focus { border-color: var(--accent); }
+  .modal-box input:focus { border-color: var(--accent); }
+  .modal-box input.error { border-color: var(--danger); }
 
-  #modal button {
-    width: 100%; padding: .7rem;
+  .modal-box .err-msg {
+    font-size: .82rem; color: var(--danger);
+    margin-bottom: .75rem; display: none;
+  }
+
+  .modal-box button.primary {
+    width: 100%; padding: .72rem;
     background: var(--accent); color: #fff;
     border: none; border-radius: 10px;
     font-size: 1rem; font-weight: 600;
     cursor: pointer; transition: opacity .15s;
+    margin-bottom: .5rem;
   }
 
-  #modal button:hover { opacity: .88; }
+  .modal-box button.primary:hover { opacity: .88; }
+  .modal-box button.primary:disabled { opacity: .5; cursor: not-allowed; }
 
-  #modal .skip {
-    display: block; margin-top: .75rem;
-    font-size: .85rem; color: var(--muted);
+  .skip-link {
+    display: block; margin-top: .5rem;
+    font-size: .84rem; color: var(--muted);
     cursor: pointer; text-decoration: underline;
   }
 
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── App ── */
   #app {
     display: none; flex-direction: column;
     height: 100%; max-width: 680px;
@@ -132,7 +166,7 @@
   }
 
   #header-avatar {
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 38px; height: 38px; border-radius: 50%;
     background: var(--accent);
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-weight: 700; font-size: .95rem; flex-shrink: 0;
@@ -209,7 +243,7 @@
     text-align: center; padding: 2rem;
   }
 
-  #empty-state svg { width: 48px; height: 48px; opacity: .35; fill: var(--muted); margin-bottom: .5rem; }
+  #empty-state svg { width: 48px; height: 48px; opacity: .3; fill: var(--muted); margin-bottom: .5rem; }
 
   #error-banner {
     display: none; background: #fee2e2; color: #991b1b;
@@ -225,17 +259,31 @@
 </head>
 <body>
 
-<div id="modal-overlay">
-  <div id="modal">
-    <div style="font-size:2rem;margin-bottom:.5rem;">💬</div>
-    <h2>Welcome to Chat</h2>
-    <p>Kullanıcı adı gir veya anonim katıl.</p>
-    <input id="username-input" type="text" placeholder="Kullanıcı adın…" maxlength="24" autocomplete="off" />
-    <button id="join-btn">Katıl</button>
-    <span class="skip" id="skip-btn">Anonim katıl</span>
+<!-- ── ADIM 1: Şifre ekranı ── -->
+<div class="modal-overlay" id="pw-screen">
+  <div class="modal-box">
+    <div class="modal-icon">🔒</div>
+    <h2>Özel Sohbet</h2>
+    <p>Bu sohbete katılmak için şifreyi gir.</p>
+    <input id="pw-input" type="password" placeholder="Şifre…" autocomplete="off" />
+    <div class="err-msg" id="pw-error">Şifre yanlış, tekrar dene.</div>
+    <button class="primary" id="pw-btn">Giriş Yap</button>
   </div>
 </div>
 
+<!-- ── ADIM 2: Kullanıcı adı ekranı ── -->
+<div class="modal-overlay" id="name-screen" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-icon">💬</div>
+    <h2>Merhaba!</h2>
+    <p>Kullanıcı adı gir veya anonim olarak katıl.</p>
+    <input id="username-input" type="text" placeholder="Kullanıcı adın…" maxlength="24" autocomplete="off" />
+    <button class="primary" id="join-btn">Sohbete Katıl</button>
+    <span class="skip-link" id="skip-btn">Anonim katıl</span>
+  </div>
+</div>
+
+<!-- ── Ana uygulama ── -->
 <div id="app">
   <div id="header">
     <div id="header-avatar">C</div>
@@ -273,7 +321,12 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 let currentUser = "";
 let allMessages = [];
 
-const modalOverlay   = document.getElementById("modal-overlay");
+// ── DOM ────────────────────────────────────────
+const pwScreen       = document.getElementById("pw-screen");
+const pwInput        = document.getElementById("pw-input");
+const pwBtn          = document.getElementById("pw-btn");
+const pwError        = document.getElementById("pw-error");
+const nameScreen     = document.getElementById("name-screen");
 const usernameInput  = document.getElementById("username-input");
 const joinBtn        = document.getElementById("join-btn");
 const skipBtn        = document.getElementById("skip-btn");
@@ -286,6 +339,7 @@ const headerAvatar   = document.getElementById("header-avatar");
 const currentUserLbl = document.getElementById("current-user-label");
 const errorBanner    = document.getElementById("error-banner");
 
+// ── Yardımcı fonksiyonlar ──────────────────────
 function formatTime(ts) {
   if (!ts) return "";
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -300,9 +354,61 @@ function showError(msg) {
   errorBanner.style.display = "block";
 }
 
+// ── ADIM 1: Şifre doğrulama ───────────────────
+async function checkPassword() {
+  const entered = pwInput.value.trim();
+  if (!entered) return;
+
+  // Butonu yükleme moduna al
+  pwBtn.disabled = true;
+  pwBtn.innerHTML = '<span class="spinner"></span>Kontrol ediliyor…';
+  pwError.style.display = "none";
+  pwInput.classList.remove("error");
+
+  try {
+    const { data, error } = await db
+      .from("config")
+      .select("value")
+      .eq("key", "chat_password")
+      .single();
+
+    if (error) throw error;
+
+    if (data.value === entered) {
+      // Şifre doğru — kullanıcı adı ekranına geç
+      sessionStorage.setItem("chat_auth", "ok");
+      pwScreen.style.display = "none";
+      nameScreen.style.display = "flex";
+      setTimeout(() => usernameInput.focus(), 100);
+    } else {
+      // Şifre yanlış
+      pwInput.classList.add("error");
+      pwError.style.display = "block";
+      pwInput.value = "";
+      pwInput.focus();
+    }
+  } catch(e) {
+    pwError.textContent = "Bağlantı hatası: " + e.message;
+    pwError.style.display = "block";
+  } finally {
+    pwBtn.disabled = false;
+    pwBtn.textContent = "Giriş Yap";
+  }
+}
+
+pwBtn.addEventListener("click", checkPassword);
+pwInput.addEventListener("keydown", e => { if (e.key === "Enter") checkPassword(); });
+
+// Oturumda zaten şifre girilmişse direkt kullanıcı adı ekranına git
+if (sessionStorage.getItem("chat_auth") === "ok") {
+  pwScreen.style.display = "none";
+  nameScreen.style.display = "flex";
+}
+
+// ── ADIM 2: Kullanıcı adı & sohbete giriş ─────
 function enterChat(name) {
   currentUser = name || ("Misafir_" + Math.floor(Math.random() * 9000 + 1000));
-  modalOverlay.style.display = "none";
+  nameScreen.style.display = "none";
   appEl.style.display = "flex";
   headerAvatar.textContent = initials(currentUser);
   currentUserLbl.textContent = currentUser;
@@ -316,6 +422,7 @@ usernameInput.addEventListener("keydown", e => {
   if (e.key === "Enter") enterChat(usernameInput.value.trim());
 });
 
+// ── Mesajları yükle ────────────────────────────
 async function loadMessages() {
   const { data, error } = await db
     .from("messages")
@@ -330,6 +437,7 @@ async function loadMessages() {
   await markSeenForOthers(allMessages);
 }
 
+// ── Gerçek zamanlı dinleyici ───────────────────
 function subscribeRealtime() {
   db.channel("messages-channel")
     .on("postgres_changes",
@@ -339,9 +447,7 @@ function subscribeRealtime() {
           allMessages.push(payload.new);
           renderMessages(allMessages);
           if (isAtBottom()) scrollToBottom();
-          if (payload.new.username !== currentUser) {
-            markSeenForOthers([payload.new]);
-          }
+          if (payload.new.username !== currentUser) markSeenForOthers([payload.new]);
         } else if (payload.eventType === "UPDATE") {
           const idx = allMessages.findIndex(m => m.id === payload.new.id);
           if (idx !== -1) allMessages[idx] = payload.new;
@@ -354,14 +460,14 @@ function subscribeRealtime() {
     });
 }
 
+// ── Görüldü işaretle ──────────────────────────
 async function markSeenForOthers(msgs) {
-  const unseenIds = msgs
-    .filter(m => m.username !== currentUser && !m.seen)
-    .map(m => m.id);
-  if (!unseenIds.length) return;
-  await db.from("messages").update({ seen: true }).in("id", unseenIds);
+  const ids = msgs.filter(m => m.username !== currentUser && !m.seen).map(m => m.id);
+  if (!ids.length) return;
+  await db.from("messages").update({ seen: true }).in("id", ids);
 }
 
+// ── Mesaj gönder ──────────────────────────────
 async function sendMessage() {
   const text = msgInput.value.trim();
   if (!text) return;
@@ -369,20 +475,16 @@ async function sendMessage() {
   autoResize();
 
   const { error } = await db.from("messages").insert({
-    text,
-    username: currentUser,
-    seen: false
+    text, username: currentUser, seen: false
   });
 
   if (error) showError("Gönderilemedi: " + error.message);
 }
 
 sendBtn.addEventListener("click", sendMessage);
-
 msgInput.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-
 msgInput.addEventListener("input", autoResize);
 
 function autoResize() {
@@ -390,6 +492,7 @@ function autoResize() {
   msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
 }
 
+// ── Mesajları render et ───────────────────────
 function renderMessages(messages) {
   if (!messages.length) { emptyState.style.display = "flex"; return; }
   emptyState.style.display = "none";
@@ -403,9 +506,9 @@ function renderMessages(messages) {
     const senderChanged = msg.username !== lastSender;
 
     if (senderChanged && i > 0) {
-      const spacer = document.createElement("div");
-      spacer.className = "msg-spacer";
-      messagesEl.appendChild(spacer);
+      const sp = document.createElement("div");
+      sp.className = "msg-spacer";
+      messagesEl.appendChild(sp);
     }
 
     const group = document.createElement("div");
