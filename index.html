@@ -7,25 +7,37 @@
 
 <!--
 =======================================================
-  REAL-TIME CHAT APP — FIREBASE SETUP INSTRUCTIONS
+  SUPABASE KURULUM TALİMATLARI
 =======================================================
 
-1. Go to https://console.firebase.google.com
-2. Create a new project (or use an existing one)
-3. In the project, go to "Build" → "Firestore Database"
-4. Click "Create database" → choose "Start in test mode" → pick a region → Done
-5. Go to "Project settings" (gear icon) → "Your apps" → click "</>" (Web)
-6. Register the app, copy the firebaseConfig object
-7. Paste your values into the FIREBASE CONFIG section below
-8. (Optional) To restrict access, go to Firestore → Rules and set up auth rules
+1. Supabase Dashboard → SQL Editor'a gir
+2. Aşağıdaki SQL'i kopyala ve "Run" ile çalıştır:
 
-That's it! Share the HTML file via any static host (GitHub Pages, Netlify, etc.)
+  create table messages (
+    id uuid default gen_random_uuid() primary key,
+    text text not null,
+    username text not null,
+    seen boolean default false,
+    created_at timestamp with time zone default timezone('utc', now())
+  );
+
+  alter table messages enable row level security;
+
+  create policy "Herkes okuyabilir"
+    on messages for select using (true);
+
+  create policy "Herkes yazabilir"
+    on messages for insert with check (true);
+
+  create policy "Herkes güncelleyebilir"
+    on messages for update using (true);
+
+3. Sol menüden "Realtime" → "Tables" → messages tablosunu etkinleştir
+4. Dosyayı GitHub Pages'e yükle ve linki paylaş!
 =======================================================
 -->
 
-<!-- Firebase SDK (v9 compat mode for simplicity) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -63,7 +75,6 @@ That's it! Share the HTML file via any static host (GitHub Pages, Netlify, etc.)
     color: var(--text-in);
   }
 
-  /* ── Username modal ── */
   #modal-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.55);
@@ -80,359 +91,188 @@ That's it! Share the HTML file via any static host (GitHub Pages, Netlify, etc.)
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
   }
 
-  #modal h2 {
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin-bottom: .4rem;
-  }
-
-  #modal p {
-    font-size: .9rem;
-    color: var(--muted);
-    margin-bottom: 1.25rem;
-  }
+  #modal h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: .4rem; }
+  #modal p  { font-size: .9rem; color: var(--muted); margin-bottom: 1.25rem; }
 
   #modal input {
-    width: 100%;
-    padding: .65rem 1rem;
-    border: 1.5px solid var(--border);
-    border-radius: 10px;
-    font-size: 1rem;
-    background: var(--input-bg);
-    color: var(--text-in);
-    outline: none;
-    margin-bottom: 1rem;
-    transition: border-color .15s;
+    width: 100%; padding: .65rem 1rem;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    font-size: 1rem; background: var(--input-bg); color: var(--text-in);
+    outline: none; margin-bottom: 1rem; transition: border-color .15s;
   }
 
   #modal input:focus { border-color: var(--accent); }
 
   #modal button {
-    width: 100%;
-    padding: .7rem;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity .15s;
+    width: 100%; padding: .7rem;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 10px;
+    font-size: 1rem; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
   }
 
   #modal button:hover { opacity: .88; }
 
   #modal .skip {
-    display: block;
-    margin-top: .75rem;
-    font-size: .85rem;
-    color: var(--muted);
-    cursor: pointer;
-    text-decoration: underline;
+    display: block; margin-top: .75rem;
+    font-size: .85rem; color: var(--muted);
+    cursor: pointer; text-decoration: underline;
   }
 
-  /* ── App shell ── */
   #app {
-    display: none;
-    flex-direction: column;
-    height: 100%;
-    max-width: 680px;
-    margin: 0 auto;
-    background: var(--surface);
+    display: none; flex-direction: column;
+    height: 100%; max-width: 680px;
+    margin: 0 auto; background: var(--surface);
   }
 
-  /* Header */
   #header {
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    padding: .85rem 1rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    position: sticky; top: 0;
-    z-index: 10;
+    display: flex; align-items: center; gap: .75rem;
+    padding: .85rem 1rem; border-bottom: 1px solid var(--border);
+    background: var(--surface); position: sticky; top: 0; z-index: 10;
   }
 
   #header-avatar {
-    width: 36px; height: 36px;
-    border-radius: 50%;
+    width: 36px; height: 36px; border-radius: 50%;
     background: var(--accent);
     display: flex; align-items: center; justify-content: center;
-    color: #fff; font-weight: 700; font-size: .95rem;
-    flex-shrink: 0;
+    color: #fff; font-weight: 700; font-size: .95rem; flex-shrink: 0;
   }
 
-  #header-info h1 {
-    font-size: 1rem; font-weight: 600; line-height: 1.2;
-  }
-
-  #header-info span {
-    font-size: .78rem; color: var(--muted);
-  }
+  #header-info h1 { font-size: 1rem; font-weight: 600; line-height: 1.2; }
+  #header-info span { font-size: .78rem; color: var(--muted); }
 
   #online-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #22c55e;
-    display: inline-block;
-    margin-right: 4px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e; display: inline-block; margin-right: 4px;
   }
 
-  /* Messages area */
   #messages {
-    flex: 1;
-    overflow-y: auto;
+    flex: 1; overflow-y: auto;
     padding: 1rem .75rem;
-    display: flex;
-    flex-direction: column;
-    gap: .25rem;
+    display: flex; flex-direction: column; gap: .25rem;
     scroll-behavior: smooth;
   }
 
-  .msg-group {
-    display: flex;
-    flex-direction: column;
-    max-width: 72%;
-    gap: 2px;
-  }
-
+  .msg-group { display: flex; flex-direction: column; max-width: 72%; gap: 2px; }
   .msg-group.out { align-self: flex-end; align-items: flex-end; }
   .msg-group.in  { align-self: flex-start; align-items: flex-start; }
 
-  .msg-sender {
-    font-size: .72rem;
-    color: var(--muted);
-    margin-bottom: 2px;
-    padding: 0 4px;
-  }
+  .msg-sender { font-size: .72rem; color: var(--muted); margin-bottom: 2px; padding: 0 4px; }
 
   .bubble {
-    padding: .55rem .85rem;
-    border-radius: 18px;
-    font-size: .95rem;
-    line-height: 1.45;
-    max-width: 100%;
-    word-break: break-word;
-    position: relative;
+    padding: .55rem .85rem; border-radius: 18px;
+    font-size: .95rem; line-height: 1.45;
+    max-width: 100%; word-break: break-word;
   }
 
-  .out .bubble {
-    background: var(--bubble-out);
-    color: var(--text-out);
-    border-bottom-right-radius: 4px;
-  }
+  .out .bubble { background: var(--bubble-out); color: var(--text-out); border-bottom-right-radius: 4px; }
+  .in .bubble  { background: var(--bubble-in);  color: var(--text-in);  border-bottom-left-radius: 4px; }
 
-  .in .bubble {
-    background: var(--bubble-in);
-    color: var(--text-in);
-    border-bottom-left-radius: 4px;
-  }
+  .msg-meta { display: flex; align-items: center; gap: 5px; padding: 0 4px; margin-top: 2px; }
+  .msg-time  { font-size: .68rem; color: var(--muted); }
+  .seen-label { font-size: .68rem; color: var(--seen-color); font-weight: 500; }
 
-  .msg-meta {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 4px;
-    margin-top: 2px;
-  }
-
-  .msg-time {
-    font-size: .68rem;
-    color: var(--muted);
-  }
-
-  .seen-label {
-    font-size: .68rem;
-    color: var(--seen-color);
-    font-weight: 500;
-  }
-
-  /* Spacer between different senders */
   .msg-spacer { height: .6rem; }
 
-  /* ── Input area ── */
   #input-bar {
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-    padding: .65rem .75rem;
-    border-top: 1px solid var(--border);
-    background: var(--surface);
-    position: sticky; bottom: 0;
+    display: flex; align-items: center; gap: .5rem;
+    padding: .65rem .75rem; border-top: 1px solid var(--border);
+    background: var(--surface); position: sticky; bottom: 0;
   }
 
   #msg-input {
-    flex: 1;
-    padding: .6rem 1rem;
-    border: 1.5px solid var(--border);
-    border-radius: 22px;
-    font-size: .95rem;
-    background: var(--input-bg);
-    color: var(--text-in);
-    outline: none;
-    resize: none;
-    max-height: 120px;
-    line-height: 1.4;
-    transition: border-color .15s;
-    font-family: inherit;
+    flex: 1; padding: .6rem 1rem;
+    border: 1.5px solid var(--border); border-radius: 22px;
+    font-size: .95rem; background: var(--input-bg); color: var(--text-in);
+    outline: none; resize: none; max-height: 120px;
+    line-height: 1.4; transition: border-color .15s; font-family: inherit;
   }
 
   #msg-input:focus { border-color: var(--accent); }
 
   #send-btn {
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    background: var(--accent);
-    border: none;
-    cursor: pointer;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    transition: opacity .15s, transform .1s;
+    flex-shrink: 0; transition: opacity .15s, transform .1s;
   }
 
   #send-btn:hover { opacity: .88; }
   #send-btn:active { transform: scale(.93); }
-
   #send-btn svg { width: 18px; height: 18px; fill: #fff; }
 
-  /* Empty state */
   #empty-state {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: .5rem;
-    flex: 1;
-    color: var(--muted);
-    font-size: .9rem;
-    text-align: center;
-    padding: 2rem;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: .5rem; flex: 1;
+    color: var(--muted); font-size: .9rem;
+    text-align: center; padding: 2rem;
   }
 
-  #empty-state svg {
-    width: 48px; height: 48px;
-    opacity: .35;
-    fill: var(--muted);
-    margin-bottom: .5rem;
-  }
+  #empty-state svg { width: 48px; height: 48px; opacity: .35; fill: var(--muted); margin-bottom: .5rem; }
 
-  /* Error banner */
   #error-banner {
-    display: none;
-    background: #fee2e2;
-    color: #991b1b;
-    font-size: .85rem;
-    padding: .6rem 1rem;
-    border-bottom: 1px solid #fca5a5;
-    text-align: center;
+    display: none; background: #fee2e2; color: #991b1b;
+    font-size: .85rem; padding: .6rem 1rem;
+    border-bottom: 1px solid #fca5a5; text-align: center;
   }
 
-  /* Scrollbar */
   #messages::-webkit-scrollbar { width: 4px; }
   #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-  @media (max-width: 480px) {
-    .msg-group { max-width: 85%; }
-  }
+  @media (max-width: 480px) { .msg-group { max-width: 85%; } }
 </style>
 </head>
 <body>
 
-<!-- Username modal -->
 <div id="modal-overlay">
   <div id="modal">
     <div style="font-size:2rem;margin-bottom:.5rem;">💬</div>
     <h2>Welcome to Chat</h2>
-    <p>Enter a username to get started, or join anonymously.</p>
-    <input id="username-input" type="text" placeholder="Your username…" maxlength="24" autocomplete="off" />
-    <button id="join-btn">Join Chat</button>
-    <span class="skip" id="skip-btn">Join anonymously</span>
+    <p>Kullanıcı adı gir veya anonim katıl.</p>
+    <input id="username-input" type="text" placeholder="Kullanıcı adın…" maxlength="24" autocomplete="off" />
+    <button id="join-btn">Katıl</button>
+    <span class="skip" id="skip-btn">Anonim katıl</span>
   </div>
 </div>
 
-<!-- Main app -->
 <div id="app">
-  <!-- Header -->
   <div id="header">
     <div id="header-avatar">C</div>
     <div id="header-info">
       <h1>Group Chat</h1>
-      <span><span id="online-dot"></span>Live</span>
+      <span><span id="online-dot"></span>Canlı</span>
     </div>
     <div style="margin-left:auto;font-size:.82rem;color:var(--muted)" id="current-user-label"></div>
   </div>
 
-  <div id="error-banner">
-    Firebase not configured. Please add your Firebase config — see the comments at the top of this file.
-  </div>
+  <div id="error-banner"></div>
 
-  <!-- Messages -->
   <div id="messages">
     <div id="empty-state">
       <svg viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></svg>
-      No messages yet. Say hello!
+      Henüz mesaj yok. Merhaba de!
     </div>
   </div>
 
-  <!-- Input -->
   <div id="input-bar">
-    <textarea id="msg-input" rows="1" placeholder="Message…" maxlength="1000"></textarea>
-    <button id="send-btn" title="Send">
+    <textarea id="msg-input" rows="1" placeholder="Mesaj…" maxlength="1000"></textarea>
+    <button id="send-btn" title="Gönder">
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
   </div>
 </div>
 
 <script>
-// =======================================================
-//  FIREBASE CONFIG — Replace with your project's values
-//  Get these from: Firebase Console → Project Settings → Your apps → Web
-// =======================================================
-const firebaseConfig = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId:             "YOUR_APP_ID"
-};
-// =======================================================
+const SUPABASE_URL = "https://bycrjcuqefpjafuczknw.supabase.co";
+const SUPABASE_KEY = "sb_publishable_1jvBq9F7H06KPHqRFa4Fqg_6C1SX_jH";
 
-// ── State ──────────────────────────────────────────────
-let db = null;
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 let currentUser = "";
-let sessionId = "";
-let unsubscribe = null;
-const COLLECTION = "messages";
+let allMessages = [];
 
-// ── Firebase init ──────────────────────────────────────
-function initFirebase() {
-  try {
-    if (firebaseConfig.apiKey === "YOUR_API_KEY") throw new Error("not configured");
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    return true;
-  } catch(e) {
-    return false;
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────
-function randomId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-function formatTime(ts) {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function initials(name) {
-  return name ? name.slice(0, 2).toUpperCase() : "?";
-}
-
-// ── DOM refs ───────────────────────────────────────────
 const modalOverlay   = document.getElementById("modal-overlay");
 const usernameInput  = document.getElementById("username-input");
 const joinBtn        = document.getElementById("join-btn");
@@ -446,96 +286,101 @@ const headerAvatar   = document.getElementById("header-avatar");
 const currentUserLbl = document.getElementById("current-user-label");
 const errorBanner    = document.getElementById("error-banner");
 
-// ── Enter chat ─────────────────────────────────────────
-function enterChat(name) {
-  currentUser = name || ("Guest_" + Math.floor(Math.random() * 9000 + 1000));
-  sessionId   = randomId();
+function formatTime(ts) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
+function initials(name) {
+  return name ? name.slice(0, 2).toUpperCase() : "?";
+}
+
+function showError(msg) {
+  errorBanner.textContent = msg;
+  errorBanner.style.display = "block";
+}
+
+function enterChat(name) {
+  currentUser = name || ("Misafir_" + Math.floor(Math.random() * 9000 + 1000));
   modalOverlay.style.display = "none";
   appEl.style.display = "flex";
   headerAvatar.textContent = initials(currentUser);
   currentUserLbl.textContent = currentUser;
-
-  const ok = initFirebase();
-  if (!ok) {
-    errorBanner.style.display = "block";
-    showDemoMessages();
-    return;
-  }
-
-  startListening();
+  loadMessages();
+  subscribeRealtime();
 }
 
-joinBtn.addEventListener("click", () => {
-  enterChat(usernameInput.value.trim());
-});
-
-skipBtn.addEventListener("click", () => enterChat(""));
-
+joinBtn.addEventListener("click", () => enterChat(usernameInput.value.trim()));
+skipBtn.addEventListener("click",  () => enterChat(""));
 usernameInput.addEventListener("keydown", e => {
   if (e.key === "Enter") enterChat(usernameInput.value.trim());
 });
 
-// ── Real-time listener ─────────────────────────────────
-function startListening() {
-  if (unsubscribe) unsubscribe();
+async function loadMessages() {
+  const { data, error } = await db
+    .from("messages")
+    .select("*")
+    .order("created_at", { ascending: true });
 
-  unsubscribe = db.collection(COLLECTION)
-    .orderBy("timestamp")
-    .onSnapshot(snapshot => {
-      renderMessages(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-      markSeenForOthers(snapshot.docs);
-    }, err => {
-      errorBanner.textContent = "Firestore error: " + err.message;
-      errorBanner.style.display = "block";
+  if (error) { showError("Mesajlar yüklenemedi: " + error.message); return; }
+
+  allMessages = data || [];
+  renderMessages(allMessages);
+  scrollToBottom();
+  await markSeenForOthers(allMessages);
+}
+
+function subscribeRealtime() {
+  db.channel("messages-channel")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "messages" },
+      payload => {
+        if (payload.eventType === "INSERT") {
+          allMessages.push(payload.new);
+          renderMessages(allMessages);
+          if (isAtBottom()) scrollToBottom();
+          if (payload.new.username !== currentUser) {
+            markSeenForOthers([payload.new]);
+          }
+        } else if (payload.eventType === "UPDATE") {
+          const idx = allMessages.findIndex(m => m.id === payload.new.id);
+          if (idx !== -1) allMessages[idx] = payload.new;
+          renderMessages(allMessages);
+        }
+      }
+    )
+    .subscribe(status => {
+      if (status === "CHANNEL_ERROR") showError("Bağlantı hatası. Sayfayı yenile.");
     });
 }
 
-// ── Mark messages from others as seen ─────────────────
-function markSeenForOthers(docs) {
-  const batch = db.batch();
-  let changed = false;
-
-  docs.forEach(doc => {
-    const d = doc.data();
-    if (d.username !== currentUser && !d.seen) {
-      batch.update(doc.ref, { seen: true });
-      changed = true;
-    }
-  });
-
-  if (changed) batch.commit().catch(() => {});
+async function markSeenForOthers(msgs) {
+  const unseenIds = msgs
+    .filter(m => m.username !== currentUser && !m.seen)
+    .map(m => m.id);
+  if (!unseenIds.length) return;
+  await db.from("messages").update({ seen: true }).in("id", unseenIds);
 }
 
-// ── Send message ───────────────────────────────────────
 async function sendMessage() {
   const text = msgInput.value.trim();
-  if (!text || !db) return;
-
+  if (!text) return;
   msgInput.value = "";
   autoResize();
 
-  try {
-    await db.collection(COLLECTION).add({
-      text,
-      username:  currentUser,
-      sessionId: sessionId,
-      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-      seen:      false
-    });
-  } catch(e) {
-    errorBanner.textContent = "Failed to send: " + e.message;
-    errorBanner.style.display = "block";
-  }
+  const { error } = await db.from("messages").insert({
+    text,
+    username: currentUser,
+    seen: false
+  });
+
+  if (error) showError("Gönderilemedi: " + error.message);
 }
 
 sendBtn.addEventListener("click", sendMessage);
 
 msgInput.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
 msgInput.addEventListener("input", autoResize);
@@ -545,21 +390,13 @@ function autoResize() {
   msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
 }
 
-// ── Render messages ────────────────────────────────────
-let lastSender = null;
-
 function renderMessages(messages) {
-  if (!messages.length) {
-    emptyState.style.display = "flex";
-    return;
-  }
+  if (!messages.length) { emptyState.style.display = "flex"; return; }
   emptyState.style.display = "none";
 
-  // Clear and re-render (simple approach for small collections)
-  // For large collections, consider diffing
-  const wasAtBottom = isAtBottom();
+  const wasBottom = isAtBottom();
   messagesEl.innerHTML = "";
-  lastSender = null;
+  let lastSender = null;
 
   messages.forEach((msg, i) => {
     const isOwn = msg.username === currentUser;
@@ -574,33 +411,30 @@ function renderMessages(messages) {
     const group = document.createElement("div");
     group.className = "msg-group " + (isOwn ? "out" : "in");
 
-    // Sender name (only on first bubble in a group)
     if (senderChanged && !isOwn) {
-      const senderEl = document.createElement("div");
-      senderEl.className = "msg-sender";
-      senderEl.textContent = msg.username;
-      group.appendChild(senderEl);
+      const s = document.createElement("div");
+      s.className = "msg-sender";
+      s.textContent = msg.username;
+      group.appendChild(s);
     }
 
-    // Bubble
     const bubble = document.createElement("div");
     bubble.className = "bubble";
     bubble.textContent = msg.text;
     group.appendChild(bubble);
 
-    // Meta: time + seen
     const meta = document.createElement("div");
     meta.className = "msg-meta";
 
     const timeEl = document.createElement("span");
     timeEl.className = "msg-time";
-    timeEl.textContent = formatTime(msg.timestamp);
+    timeEl.textContent = formatTime(msg.created_at);
     meta.appendChild(timeEl);
 
     if (isOwn && msg.seen) {
       const seenEl = document.createElement("span");
       seenEl.className = "seen-label";
-      seenEl.textContent = "Seen";
+      seenEl.textContent = "Görüldü";
       meta.appendChild(seenEl);
     }
 
@@ -609,7 +443,7 @@ function renderMessages(messages) {
     lastSender = msg.username;
   });
 
-  if (wasAtBottom) scrollToBottom();
+  if (wasBottom) scrollToBottom();
 }
 
 function isAtBottom() {
@@ -619,17 +453,6 @@ function isAtBottom() {
 
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-// ── Demo messages (when Firebase not configured) ────────
-function showDemoMessages() {
-  const now = { toDate: () => new Date() };
-  const then = { toDate: () => new Date(Date.now() - 60000) };
-
-  renderMessages([
-    { id: "1", username: "Alice",  text: "Hey! Welcome to the chat 👋",  timestamp: then, seen: true  },
-    { id: "2", username: currentUser, text: "Thanks! This is a demo — add your Firebase config to go live.", timestamp: now, seen: false }
-  ]);
 }
 </script>
 </body>
