@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chat</title>
+
+<!--
+=======================================================
+  REAL-TIME CHAT APP — FIREBASE SETUP INSTRUCTIONS
+=======================================================
+
+1. Go to https://console.firebase.google.com
+2. Create a new project (or use an existing one)
+3. In the project, go to "Build" → "Firestore Database"
+4. Click "Create database" → choose "Start in test mode" → pick a region → Done
+5. Go to "Project settings" (gear icon) → "Your apps" → click "</>" (Web)
+6. Register the app, copy the firebaseConfig object
+7. Paste your values into the FIREBASE CONFIG section below
+8. (Optional) To restrict access, go to Firestore → Rules and set up auth rules
+
+That's it! Share the HTML file via any static host (GitHub Pages, Netlify, etc.)
+=======================================================
+-->
+
+<!-- Firebase SDK (v9 compat mode for simplicity) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f0f0f0;
+    --surface: #ffffff;
+    --bubble-out: #0084ff;
+    --bubble-in: #e4e6eb;
+    --text-out: #ffffff;
+    --text-in: #111111;
+    --muted: #8a8a8a;
+    --border: #e0e0e0;
+    --input-bg: #f7f7f7;
+    --accent: #0084ff;
+    --seen-color: #0084ff;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e0e;
+      --surface: #1c1c1e;
+      --bubble-in: #2c2c2e;
+      --text-in: #f2f2f7;
+      --border: #2c2c2e;
+      --input-bg: #2c2c2e;
+      --muted: #8e8e93;
+    }
+  }
+
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text-in);
+  }
+
+  /* ── Username modal ── */
+  #modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+
+  #modal {
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 2rem 1.75rem;
+    width: min(360px, 90vw);
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  }
+
+  #modal h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: .4rem;
+  }
+
+  #modal p {
+    font-size: .9rem;
+    color: var(--muted);
+    margin-bottom: 1.25rem;
+  }
+
+  #modal input {
+    width: 100%;
+    padding: .65rem 1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-size: 1rem;
+    background: var(--input-bg);
+    color: var(--text-in);
+    outline: none;
+    margin-bottom: 1rem;
+    transition: border-color .15s;
+  }
+
+  #modal input:focus { border-color: var(--accent); }
+
+  #modal button {
+    width: 100%;
+    padding: .7rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+
+  #modal button:hover { opacity: .88; }
+
+  #modal .skip {
+    display: block;
+    margin-top: .75rem;
+    font-size: .85rem;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* ── App shell ── */
+  #app {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+    background: var(--surface);
+  }
+
+  /* Header */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .85rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0;
+    z-index: 10;
+  }
+
+  #header-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: .95rem;
+    flex-shrink: 0;
+  }
+
+  #header-info h1 {
+    font-size: 1rem; font-weight: 600; line-height: 1.2;
+  }
+
+  #header-info span {
+    font-size: .78rem; color: var(--muted);
+  }
+
+  #online-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    display: inline-block;
+    margin-right: 4px;
+  }
+
+  /* Messages area */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem .75rem;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    scroll-behavior: smooth;
+  }
+
+  .msg-group {
+    display: flex;
+    flex-direction: column;
+    max-width: 72%;
+    gap: 2px;
+  }
+
+  .msg-group.out { align-self: flex-end; align-items: flex-end; }
+  .msg-group.in  { align-self: flex-start; align-items: flex-start; }
+
+  .msg-sender {
+    font-size: .72rem;
+    color: var(--muted);
+    margin-bottom: 2px;
+    padding: 0 4px;
+  }
+
+  .bubble {
+    padding: .55rem .85rem;
+    border-radius: 18px;
+    font-size: .95rem;
+    line-height: 1.45;
+    max-width: 100%;
+    word-break: break-word;
+    position: relative;
+  }
+
+  .out .bubble {
+    background: var(--bubble-out);
+    color: var(--text-out);
+    border-bottom-right-radius: 4px;
+  }
+
+  .in .bubble {
+    background: var(--bubble-in);
+    color: var(--text-in);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 4px;
+    margin-top: 2px;
+  }
+
+  .msg-time {
+    font-size: .68rem;
+    color: var(--muted);
+  }
+
+  .seen-label {
+    font-size: .68rem;
+    color: var(--seen-color);
+    font-weight: 500;
+  }
+
+  /* Spacer between different senders */
+  .msg-spacer { height: .6rem; }
+
+  /* ── Input area ── */
+  #input-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .65rem .75rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; bottom: 0;
+  }
+
+  #msg-input {
+    flex: 1;
+    padding: .6rem 1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 22px;
+    font-size: .95rem;
+    background: var(--input-bg);
+    color: var(--text-in);
+    outline: none;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.4;
+    transition: border-color .15s;
+    font-family: inherit;
+  }
+
+  #msg-input:focus { border-color: var(--accent); }
+
+  #send-btn {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: opacity .15s, transform .1s;
+  }
+
+  #send-btn:hover { opacity: .88; }
+  #send-btn:active { transform: scale(.93); }
+
+  #send-btn svg { width: 18px; height: 18px; fill: #fff; }
+
+  /* Empty state */
+  #empty-state {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    flex: 1;
+    color: var(--muted);
+    font-size: .9rem;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  #empty-state svg {
+    width: 48px; height: 48px;
+    opacity: .35;
+    fill: var(--muted);
+    margin-bottom: .5rem;
+  }
+
+  /* Error banner */
+  #error-banner {
+    display: none;
+    background: #fee2e2;
+    color: #991b1b;
+    font-size: .85rem;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid #fca5a5;
+    text-align: center;
+  }
+
+  /* Scrollbar */
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 480px) {
+    .msg-group { max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Username modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div style="font-size:2rem;margin-bottom:.5rem;">💬</div>
+    <h2>Welcome to Chat</h2>
+    <p>Enter a username to get started, or join anonymously.</p>
+    <input id="username-input" type="text" placeholder="Your username…" maxlength="24" autocomplete="off" />
+    <button id="join-btn">Join Chat</button>
+    <span class="skip" id="skip-btn">Join anonymously</span>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <div id="header-avatar">C</div>
+    <div id="header-info">
+      <h1>Group Chat</h1>
+      <span><span id="online-dot"></span>Live</span>
+    </div>
+    <div style="margin-left:auto;font-size:.82rem;color:var(--muted)" id="current-user-label"></div>
+  </div>
+
+  <div id="error-banner">
+    Firebase not configured. Please add your Firebase config — see the comments at the top of this file.
+  </div>
+
+  <!-- Messages -->
+  <div id="messages">
+    <div id="empty-state">
+      <svg viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></svg>
+      No messages yet. Say hello!
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div id="input-bar">
+    <textarea id="msg-input" rows="1" placeholder="Message…" maxlength="1000"></textarea>
+    <button id="send-btn" title="Send">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// =======================================================
+//  FIREBASE CONFIG — Replace with your project's values
+//  Get these from: Firebase Console → Project Settings → Your apps → Web
+// =======================================================
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+// =======================================================
+
+// ── State ──────────────────────────────────────────────
+let db = null;
+let currentUser = "";
+let sessionId = "";
+let unsubscribe = null;
+const COLLECTION = "messages";
+
+// ── Firebase init ──────────────────────────────────────
+function initFirebase() {
+  try {
+    if (firebaseConfig.apiKey === "YOUR_API_KEY") throw new Error("not configured");
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────
+function randomId() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function formatTime(ts) {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function initials(name) {
+  return name ? name.slice(0, 2).toUpperCase() : "?";
+}
+
+// ── DOM refs ───────────────────────────────────────────
+const modalOverlay   = document.getElementById("modal-overlay");
+const usernameInput  = document.getElementById("username-input");
+const joinBtn        = document.getElementById("join-btn");
+const skipBtn        = document.getElementById("skip-btn");
+const appEl          = document.getElementById("app");
+const messagesEl     = document.getElementById("messages");
+const emptyState     = document.getElementById("empty-state");
+const msgInput       = document.getElementById("msg-input");
+const sendBtn        = document.getElementById("send-btn");
+const headerAvatar   = document.getElementById("header-avatar");
+const currentUserLbl = document.getElementById("current-user-label");
+const errorBanner    = document.getElementById("error-banner");
+
+// ── Enter chat ─────────────────────────────────────────
+function enterChat(name) {
+  currentUser = name || ("Guest_" + Math.floor(Math.random() * 9000 + 1000));
+  sessionId   = randomId();
+
+  modalOverlay.style.display = "none";
+  appEl.style.display = "flex";
+  headerAvatar.textContent = initials(currentUser);
+  currentUserLbl.textContent = currentUser;
+
+  const ok = initFirebase();
+  if (!ok) {
+    errorBanner.style.display = "block";
+    showDemoMessages();
+    return;
+  }
+
+  startListening();
+}
+
+joinBtn.addEventListener("click", () => {
+  enterChat(usernameInput.value.trim());
+});
+
+skipBtn.addEventListener("click", () => enterChat(""));
+
+usernameInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") enterChat(usernameInput.value.trim());
+});
+
+// ── Real-time listener ─────────────────────────────────
+function startListening() {
+  if (unsubscribe) unsubscribe();
+
+  unsubscribe = db.collection(COLLECTION)
+    .orderBy("timestamp")
+    .onSnapshot(snapshot => {
+      renderMessages(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      markSeenForOthers(snapshot.docs);
+    }, err => {
+      errorBanner.textContent = "Firestore error: " + err.message;
+      errorBanner.style.display = "block";
+    });
+}
+
+// ── Mark messages from others as seen ─────────────────
+function markSeenForOthers(docs) {
+  const batch = db.batch();
+  let changed = false;
+
+  docs.forEach(doc => {
+    const d = doc.data();
+    if (d.username !== currentUser && !d.seen) {
+      batch.update(doc.ref, { seen: true });
+      changed = true;
+    }
+  });
+
+  if (changed) batch.commit().catch(() => {});
+}
+
+// ── Send message ───────────────────────────────────────
+async function sendMessage() {
+  const text = msgInput.value.trim();
+  if (!text || !db) return;
+
+  msgInput.value = "";
+  autoResize();
+
+  try {
+    await db.collection(COLLECTION).add({
+      text,
+      username:  currentUser,
+      sessionId: sessionId,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      seen:      false
+    });
+  } catch(e) {
+    errorBanner.textContent = "Failed to send: " + e.message;
+    errorBanner.style.display = "block";
+  }
+}
+
+sendBtn.addEventListener("click", sendMessage);
+
+msgInput.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+msgInput.addEventListener("input", autoResize);
+
+function autoResize() {
+  msgInput.style.height = "auto";
+  msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + "px";
+}
+
+// ── Render messages ────────────────────────────────────
+let lastSender = null;
+
+function renderMessages(messages) {
+  if (!messages.length) {
+    emptyState.style.display = "flex";
+    return;
+  }
+  emptyState.style.display = "none";
+
+  // Clear and re-render (simple approach for small collections)
+  // For large collections, consider diffing
+  const wasAtBottom = isAtBottom();
+  messagesEl.innerHTML = "";
+  lastSender = null;
+
+  messages.forEach((msg, i) => {
+    const isOwn = msg.username === currentUser;
+    const senderChanged = msg.username !== lastSender;
+
+    if (senderChanged && i > 0) {
+      const spacer = document.createElement("div");
+      spacer.className = "msg-spacer";
+      messagesEl.appendChild(spacer);
+    }
+
+    const group = document.createElement("div");
+    group.className = "msg-group " + (isOwn ? "out" : "in");
+
+    // Sender name (only on first bubble in a group)
+    if (senderChanged && !isOwn) {
+      const senderEl = document.createElement("div");
+      senderEl.className = "msg-sender";
+      senderEl.textContent = msg.username;
+      group.appendChild(senderEl);
+    }
+
+    // Bubble
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = msg.text;
+    group.appendChild(bubble);
+
+    // Meta: time + seen
+    const meta = document.createElement("div");
+    meta.className = "msg-meta";
+
+    const timeEl = document.createElement("span");
+    timeEl.className = "msg-time";
+    timeEl.textContent = formatTime(msg.timestamp);
+    meta.appendChild(timeEl);
+
+    if (isOwn && msg.seen) {
+      const seenEl = document.createElement("span");
+      seenEl.className = "seen-label";
+      seenEl.textContent = "Seen";
+      meta.appendChild(seenEl);
+    }
+
+    group.appendChild(meta);
+    messagesEl.appendChild(group);
+    lastSender = msg.username;
+  });
+
+  if (wasAtBottom) scrollToBottom();
+}
+
+function isAtBottom() {
+  const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+  return scrollHeight - scrollTop - clientHeight < 80;
+}
+
+function scrollToBottom() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// ── Demo messages (when Firebase not configured) ────────
+function showDemoMessages() {
+  const now = { toDate: () => new Date() };
+  const then = { toDate: () => new Date(Date.now() - 60000) };
+
+  renderMessages([
+    { id: "1", username: "Alice",  text: "Hey! Welcome to the chat 👋",  timestamp: then, seen: true  },
+    { id: "2", username: currentUser, text: "Thanks! This is a demo — add your Firebase config to go live.", timestamp: now, seen: false }
+  ]);
+}
+</script>
+</body>
+</html>
